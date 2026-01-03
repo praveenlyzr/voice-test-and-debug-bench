@@ -7,7 +7,7 @@ A simple, stateless Next.js UI to trigger outbound SIP calls via LiveKit and to 
 - Choose STT/LLM/TTS per call
 - Edit agent instructions
 - Browser-based voice test (WebRTC) with the agent
-- Optional local log viewer for debugging (dev only)
+- Optional log viewers for debugging (local or CloudWatch)
 
 ## Local development
 
@@ -26,6 +26,20 @@ LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 ```
 
+### Optional CloudWatch logs (local or Amplify)
+```
+NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true
+ENABLE_CLOUDWATCH_LOGS=true
+AWS_REGION=us-east-1
+CLOUDWATCH_LOG_GROUP=/livekit/production
+CLOUDWATCH_STREAM_PREFIX=livekit
+CLOUDWATCH_LOGS_TOKEN=your-debug-token
+```
+
+Notes:
+- In Amplify, the app role must allow `logs:FilterLogEvents` (and `logs:DescribeLogStreams` if needed) for the log group.
+- If `CLOUDWATCH_LOGS_TOKEN` is set, paste the token in the UI (the request sends `Authorization: Bearer <token>`).
+
 ## Amplify deployment (recommended)
 
 ### Console setup (fastest)
@@ -37,6 +51,8 @@ LIVEKIT_API_SECRET=...
    - `LIVEKIT_URL`
    - `LIVEKIT_API_KEY`
    - `LIVEKIT_API_SECRET`
+   - (Optional) `AWS_REGION`, `CLOUDWATCH_LOG_GROUP`, `CLOUDWATCH_STREAM_PREFIX`,
+     `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS`, `ENABLE_CLOUDWATCH_LOGS`, `CLOUDWATCH_LOGS_TOKEN`
 6. Deploy
 
 ### Scripted setup (CLI)
@@ -84,9 +100,17 @@ Enabled only when:
 - `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`
 - `ENABLE_LOCAL_LOGS=true`
 
+### `GET /api/cloudwatch-logs`
+Fetches CloudWatch logs for the configured log group.
+Enabled only when:
+- `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true`
+- `ENABLE_CLOUDWATCH_LOGS=true`
+
 ## Debugging toggles
 - `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`
 - `ENABLE_LOCAL_LOGS=true`
+- `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true`
+- `ENABLE_CLOUDWATCH_LOGS=true`
 
 Do **not** enable these in production.
 
@@ -97,7 +121,8 @@ Do **not** enable these in production.
 │   ├── app/
 │   │   ├── api/make-call/route.ts
 │   │   ├── api/start-web-session/route.ts
-│   │   └── api/local-logs/route.ts
+│   │   ├── api/local-logs/route.ts
+│   │   └── api/cloudwatch-logs/route.ts
 │   └── components/CallTrigger.tsx
 ├── amplify.yml
 ├── deploy-amplify.sh
@@ -108,3 +133,4 @@ Do **not** enable these in production.
 ## Security
 - Never commit `.env.local` or `.env.deploy` with real secrets.
 - `LIVEKIT_API_SECRET` is only used server-side in API routes.
+- Lock down CloudWatch logs using `CLOUDWATCH_LOGS_TOKEN`.

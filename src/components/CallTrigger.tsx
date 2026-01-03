@@ -59,6 +59,9 @@ export default function CallTrigger() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const enableLocalLogs =
     process.env.NEXT_PUBLIC_ENABLE_LOCAL_LOGS === 'true';
+  const enableCloudwatchLogs =
+    process.env.NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS === 'true';
+  const logsEnabled = enableLocalLogs || enableCloudwatchLogs;
   const [logService, setLogService] = useState('livekit');
   const [logTail, setLogTail] = useState(200);
   const [logText, setLogText] = useState('');
@@ -69,6 +72,10 @@ export default function CallTrigger() {
   const [logLevel, setLogLevel] = useState('all');
   const [logMatchCase, setLogMatchCase] = useState(false);
   const [logSince, setLogSince] = useState<number | null>(null);
+  const [logSource, setLogSource] = useState(
+    enableCloudwatchLogs ? 'cloudwatch' : 'local',
+  );
+  const [logAuthToken, setLogAuthToken] = useState('');
 
   useEffect(() => {
     return () => {
@@ -109,6 +116,15 @@ export default function CallTrigger() {
       // Ignore storage failures (private mode, quota, etc).
     }
   }, [stt, llm, tts, instructions]);
+
+  useEffect(() => {
+    if (logSource === 'local' && !enableLocalLogs && enableCloudwatchLogs) {
+      setLogSource('cloudwatch');
+    }
+    if (logSource === 'cloudwatch' && !enableCloudwatchLogs && enableLocalLogs) {
+      setLogSource('local');
+    }
+  }, [logSource, enableLocalLogs, enableCloudwatchLogs]);
 
   const formatPhoneNumber = (value: string) => {
     const cleaned = value.replace(/\D/g, '');
@@ -250,7 +266,7 @@ export default function CallTrigger() {
   };
 
   const fetchLogs = useCallback(async () => {
-    if (!enableLocalLogs) return;
+    if (!logsEnabled) return;
     setLogLoading(true);
     setLogError('');
     try {
@@ -261,7 +277,18 @@ export default function CallTrigger() {
       if (logSince) {
         params.set('since', String(logSince));
       }
-      const response = await fetch(`/api/local-logs?${params.toString()}`);
+      if (logSource === 'cloudwatch' && logFilter.trim()) {
+        params.set('filter', logFilter.trim());
+      }
+      const endpoint =
+        logSource === 'cloudwatch' ? '/api/cloudwatch-logs' : '/api/local-logs';
+      const headers: HeadersInit = {};
+      if (logSource === 'cloudwatch' && logAuthToken.trim()) {
+        headers.Authorization = `Bearer ${logAuthToken.trim()}`;
+      }
+      const response = await fetch(`${endpoint}?${params.toString()}`, {
+        headers,
+      });
       const data = await response.json();
       if (!response.ok) {
         setLogError(data.error || 'Failed to fetch logs');
@@ -274,14 +301,22 @@ export default function CallTrigger() {
     } finally {
       setLogLoading(false);
     }
-  }, [enableLocalLogs, logService, logTail, logSince]);
+  }, [
+    logsEnabled,
+    logSource,
+    logService,
+    logTail,
+    logSince,
+    logFilter,
+    logAuthToken,
+  ]);
 
   useEffect(() => {
-    if (!enableLocalLogs || !logAutoRefresh) return;
+    if (!logsEnabled || !logAutoRefresh) return;
     fetchLogs();
     const id = setInterval(fetchLogs, 2000);
     return () => clearInterval(id);
-  }, [enableLocalLogs, logAutoRefresh, fetchLogs]);
+  }, [logsEnabled, logAutoRefresh, fetchLogs]);
 
   const clearLogs = () => {
     setLogSince(Math.floor(Date.now() / 1000));
@@ -545,12 +580,37 @@ export default function CallTrigger() {
           </div>
         </div>
 
-        {enableLocalLogs && (
+        {logsEnabled && (
           <div className="mt-6 p-4 bg-white rounded-lg border border-gray-200">
             <h2 className="text-sm font-semibold text-gray-700 mb-2">
-              Local Logs (debug)
+              Logs (debug)
             </h2>
             <div className="flex flex-wrap items-center gap-3 mb-3">
+              {enableLocalLogs && enableCloudwatchLogs && (
+                <>
+                  <label className="text-xs text-gray-600">Source</label>
+                  <select
+                    value={logSource}
+                    onChange={(e) => setLogSource(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded-md text-xs"
+                  >
+                    <option value="cloudwatch">cloudwatch</option>
+                    <option value="local">local</option>
+                  </select>
+                </>
+              )}
+              {logSource === 'cloudwatch' && (
+                <>
+                  <label className="text-xs text-gray-600">Token</label>
+                  <input
+                    type="password"
+                    value={logAuthToken}
+                    onChange={(e) => setLogAuthToken(e.target.value)}
+                    placeholder="Bearer token (optional)"
+                    className="px-2 py-1 border border-gray-300 rounded-md text-xs min-w-[160px]"
+                  />
+                </>
+              )}
               <label className="text-xs text-gray-600">Service</label>
               <select
                 value={logService}
@@ -561,6 +621,9 @@ export default function CallTrigger() {
                 <option value="agent">agent</option>
                 <option value="sip">sip</option>
                 <option value="redis">redis</option>
+                {logSource === 'cloudwatch' && (
+                  <option value="caddy">caddy</option>
+                )}
                 <option value="all">all</option>
               </select>
               <label className="text-xs text-gray-600">Tail</label>
