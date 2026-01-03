@@ -35,7 +35,11 @@ export async function GET(request: NextRequest) {
   }
 
   const region =
-    process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || '';
+    process.env.CLOUDWATCH_REGION ||
+    process.env.CLOUDWATCH_AWS_REGION ||
+    process.env.AWS_REGION ||
+    process.env.AWS_DEFAULT_REGION ||
+    '';
   const logGroup = process.env.CLOUDWATCH_LOG_GROUP || '';
   const streamPrefix = process.env.CLOUDWATCH_STREAM_PREFIX || 'livekit';
 

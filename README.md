@@ -28,9 +28,9 @@ LIVEKIT_API_SECRET=...
 
 ### Optional CloudWatch logs (local or Amplify)
 ```
+CLOUDWATCH_REGION=us-east-1
 NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true
 ENABLE_CLOUDWATCH_LOGS=true
-AWS_REGION=us-east-1
 CLOUDWATCH_LOG_GROUP=/livekit/production
 CLOUDWATCH_STREAM_PREFIX=livekit
 CLOUDWATCH_LOGS_TOKEN=your-debug-token
@@ -38,6 +38,7 @@ CLOUDWATCH_LOGS_TOKEN=your-debug-token
 
 Notes:
 - In Amplify, the app role must allow `logs:FilterLogEvents` (and `logs:DescribeLogStreams` if needed) for the log group.
+- Amplify blocks env vars starting with `AWS_`; use `CLOUDWATCH_REGION` instead.
 - If `CLOUDWATCH_LOGS_TOKEN` is set, paste the token in the UI (the request sends `Authorization: Bearer <token>`).
 
 ### One-time Amplify CloudWatch setup (copy/paste)
@@ -87,7 +88,7 @@ JSON
 )
 aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name AmplifyCloudWatchLogsRead --policy-document "$POLICY"
 aws amplify update-app --app-id "$AMPLIFY_APP_ID" --iam-service-role-arn "$ROLE_ARN"
-ENV_VARS="NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true,ENABLE_CLOUDWATCH_LOGS=true,AWS_REGION=$AWS_REGION,CLOUDWATCH_LOG_GROUP=$CLOUDWATCH_LOG_GROUP,CLOUDWATCH_STREAM_PREFIX=$CLOUDWATCH_STREAM_PREFIX"
+ENV_VARS="NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true,ENABLE_CLOUDWATCH_LOGS=true,CLOUDWATCH_REGION=$AWS_REGION,CLOUDWATCH_LOG_GROUP=$CLOUDWATCH_LOG_GROUP,CLOUDWATCH_STREAM_PREFIX=$CLOUDWATCH_STREAM_PREFIX"
 if [ -n "${CLOUDWATCH_LOGS_TOKEN:-}" ]; then
   ENV_VARS="$ENV_VARS,CLOUDWATCH_LOGS_TOKEN=$CLOUDWATCH_LOGS_TOKEN"
 fi
@@ -107,7 +108,7 @@ aws logs describe-log-streams --log-group-name "$CLOUDWATCH_LOG_GROUP" --log-str
    - `LIVEKIT_URL`
    - `LIVEKIT_API_KEY`
    - `LIVEKIT_API_SECRET`
-   - (Optional) `AWS_REGION`, `CLOUDWATCH_LOG_GROUP`, `CLOUDWATCH_STREAM_PREFIX`,
+   - (Optional) `CLOUDWATCH_REGION`, `CLOUDWATCH_LOG_GROUP`, `CLOUDWATCH_STREAM_PREFIX`,
      `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS`, `ENABLE_CLOUDWATCH_LOGS`, `CLOUDWATCH_LOGS_TOKEN`
 6. Deploy
 
@@ -124,7 +125,7 @@ cp .env.deploy.example .env.deploy
 export AMPLIFY_REPOSITORY="https://github.com/NeuralgoLyzr/voice-module-research"
 export AMPLIFY_ACCESS_TOKEN="<github_pat_with_repo + webhook access>"
 export AMPLIFY_BRANCH="main"
-AWS_PROFILE=dev AWS_REGION=us-east-1 bash deploy-amplify.sh
+AWS_PROFILE=dev AWS_REGION=us-east-1 CLOUDWATCH_REGION=us-east-1 bash deploy-amplify.sh
 ```
 
 Notes:
