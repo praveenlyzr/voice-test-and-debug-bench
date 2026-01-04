@@ -162,6 +162,10 @@ Fetches CloudWatch logs for the configured log group.
 Enabled only when:
 - `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true`
 - `ENABLE_CLOUDWATCH_LOGS=true`
+Optional query overrides:
+- `region`
+- `logGroup`
+- `streamPrefix`
 
 ## Debugging toggles
 - `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`
@@ -170,6 +174,25 @@ Enabled only when:
 - `ENABLE_CLOUDWATCH_LOGS=true`
 
 Do **not** enable these in production.
+
+## CloudWatch Settings Panel
+
+When CloudWatch logs are enabled, the UI shows a settings panel for:
+- Region
+- Log group
+- Stream prefix
+- Optional bearer token
+
+These values are stored in localStorage and are sent as query overrides to
+`/api/cloudwatch-logs`. Defaults are set to the LiveKit production values
+(`us-east-1`, `/livekit/voice`, `livekit`).
+
+## Troubleshooting
+
+**"CloudWatch logging is not configured."**
+- The app is missing `CLOUDWATCH_REGION` or `CLOUDWATCH_LOG_GROUP` at runtime, or the
+  latest Amplify build hasn't picked up updated env vars yet. Set the env vars and
+  trigger a new build.
 
 ## Repo structure
 ```

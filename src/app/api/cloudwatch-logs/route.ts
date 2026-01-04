@@ -34,23 +34,32 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const { searchParams } = new URL(request.url);
+  const regionOverride = (searchParams.get('region') || '').trim();
+  const logGroupOverride = (searchParams.get('logGroup') || '').trim();
+  const streamPrefixOverride = (searchParams.get('streamPrefix') || '').trim();
+
   const region =
+    regionOverride ||
     process.env.CLOUDWATCH_REGION ||
     process.env.CLOUDWATCH_AWS_REGION ||
     process.env.AWS_REGION ||
     process.env.AWS_DEFAULT_REGION ||
     '';
-  const logGroup = process.env.CLOUDWATCH_LOG_GROUP || '';
-  const streamPrefix = process.env.CLOUDWATCH_STREAM_PREFIX || 'livekit';
+  const logGroup = logGroupOverride || process.env.CLOUDWATCH_LOG_GROUP || '';
+  const streamPrefix =
+    streamPrefixOverride || process.env.CLOUDWATCH_STREAM_PREFIX || 'livekit';
 
   if (!region || !logGroup) {
+    const missing: string[] = [];
+    if (!region) missing.push('CLOUDWATCH_REGION');
+    if (!logGroup) missing.push('CLOUDWATCH_LOG_GROUP');
     return NextResponse.json(
-      { error: 'CloudWatch logging is not configured.' },
+      { error: 'CloudWatch logging is not configured.', missing },
       { status: 500 }
     );
   }
 
-  const { searchParams } = new URL(request.url);
   const service = (searchParams.get('service') || 'livekit').toLowerCase();
   const tailRaw = searchParams.get('tail') || '200';
   const filterRaw = (searchParams.get('filter') || '').trim();

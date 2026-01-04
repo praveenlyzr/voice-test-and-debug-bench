@@ -39,6 +39,12 @@ const DEFAULT_INSTRUCTIONS = `You are a helpful voice AI assistant for phone cal
 Be concise, friendly, and professional.
 Keep responses brief since users are on the phone.`;
 const DEFAULTS_STORAGE_KEY = 'livekit-outbound-defaults';
+const CLOUDWATCH_DEFAULTS = {
+  region: 'us-east-1',
+  logGroup: '/livekit/voice',
+  streamPrefix: 'livekit',
+};
+const CLOUDWATCH_SETTINGS_KEY = 'livekit-cloudwatch-settings';
 
 export default function CallTrigger() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -76,6 +82,15 @@ export default function CallTrigger() {
     enableCloudwatchLogs ? 'cloudwatch' : 'local',
   );
   const [logAuthToken, setLogAuthToken] = useState('');
+  const [cloudwatchRegion, setCloudwatchRegion] = useState(
+    CLOUDWATCH_DEFAULTS.region,
+  );
+  const [cloudwatchLogGroup, setCloudwatchLogGroup] = useState(
+    CLOUDWATCH_DEFAULTS.logGroup,
+  );
+  const [cloudwatchStreamPrefix, setCloudwatchStreamPrefix] = useState(
+    CLOUDWATCH_DEFAULTS.streamPrefix,
+  );
 
   useEffect(() => {
     return () => {
@@ -104,6 +119,23 @@ export default function CallTrigger() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CLOUDWATCH_SETTINGS_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as {
+        region?: string;
+        logGroup?: string;
+        streamPrefix?: string;
+      };
+      if (stored.region) setCloudwatchRegion(stored.region);
+      if (stored.logGroup) setCloudwatchLogGroup(stored.logGroup);
+      if (stored.streamPrefix) setCloudwatchStreamPrefix(stored.streamPrefix);
+    } catch {
+      localStorage.removeItem(CLOUDWATCH_SETTINGS_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
     const payload = {
       stt,
       llm,
@@ -116,6 +148,19 @@ export default function CallTrigger() {
       // Ignore storage failures (private mode, quota, etc).
     }
   }, [stt, llm, tts, instructions]);
+
+  useEffect(() => {
+    const payload = {
+      region: cloudwatchRegion,
+      logGroup: cloudwatchLogGroup,
+      streamPrefix: cloudwatchStreamPrefix,
+    };
+    try {
+      localStorage.setItem(CLOUDWATCH_SETTINGS_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore storage failures (private mode, quota, etc).
+    }
+  }, [cloudwatchRegion, cloudwatchLogGroup, cloudwatchStreamPrefix]);
 
   useEffect(() => {
     if (logSource === 'local' && !enableLocalLogs && enableCloudwatchLogs) {
@@ -265,6 +310,13 @@ export default function CallTrigger() {
     localStorage.removeItem(DEFAULTS_STORAGE_KEY);
   };
 
+  const resetCloudwatchSettings = () => {
+    setCloudwatchRegion(CLOUDWATCH_DEFAULTS.region);
+    setCloudwatchLogGroup(CLOUDWATCH_DEFAULTS.logGroup);
+    setCloudwatchStreamPrefix(CLOUDWATCH_DEFAULTS.streamPrefix);
+    localStorage.removeItem(CLOUDWATCH_SETTINGS_KEY);
+  };
+
   const fetchLogs = useCallback(async () => {
     if (!logsEnabled) return;
     setLogLoading(true);
@@ -279,6 +331,14 @@ export default function CallTrigger() {
       }
       if (logSource === 'cloudwatch' && logFilter.trim()) {
         params.set('filter', logFilter.trim());
+      }
+      if (logSource === 'cloudwatch') {
+        const region = cloudwatchRegion.trim();
+        const logGroup = cloudwatchLogGroup.trim();
+        const streamPrefix = cloudwatchStreamPrefix.trim();
+        if (region) params.set('region', region);
+        if (logGroup) params.set('logGroup', logGroup);
+        if (streamPrefix) params.set('streamPrefix', streamPrefix);
       }
       const endpoint =
         logSource === 'cloudwatch' ? '/api/cloudwatch-logs' : '/api/local-logs';
@@ -309,6 +369,9 @@ export default function CallTrigger() {
     logSince,
     logFilter,
     logAuthToken,
+    cloudwatchRegion,
+    cloudwatchLogGroup,
+    cloudwatchStreamPrefix,
   ]);
 
   useEffect(() => {
@@ -599,18 +662,6 @@ export default function CallTrigger() {
                   </select>
                 </>
               )}
-              {logSource === 'cloudwatch' && (
-                <>
-                  <label className="text-xs text-gray-600">Token</label>
-                  <input
-                    type="password"
-                    value={logAuthToken}
-                    onChange={(e) => setLogAuthToken(e.target.value)}
-                    placeholder="Bearer token (optional)"
-                    className="px-2 py-1 border border-gray-300 rounded-md text-xs min-w-[160px]"
-                  />
-                </>
-              )}
               <label className="text-xs text-gray-600">Service</label>
               <select
                 value={logService}
@@ -697,6 +748,62 @@ export default function CallTrigger() {
                 </button>
               )}
             </div>
+            {logSource === 'cloudwatch' && (
+              <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-gray-600">
+                    CloudWatch settings
+                  </p>
+                  <button
+                    onClick={resetCloudwatchSettings}
+                    className="px-2 py-1 text-xs rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100"
+                  >
+                    Reset defaults
+                  </button>
+                </div>
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                  <label className="text-xs text-gray-600">
+                    Region
+                    <input
+                      type="text"
+                      value={cloudwatchRegion}
+                      onChange={(e) => setCloudwatchRegion(e.target.value)}
+                      className="mt-1 w-full px-2 py-1 border border-gray-300 rounded-md text-xs"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-600">
+                    Log group
+                    <input
+                      type="text"
+                      value={cloudwatchLogGroup}
+                      onChange={(e) => setCloudwatchLogGroup(e.target.value)}
+                      className="mt-1 w-full px-2 py-1 border border-gray-300 rounded-md text-xs"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-600">
+                    Stream prefix
+                    <input
+                      type="text"
+                      value={cloudwatchStreamPrefix}
+                      onChange={(e) => setCloudwatchStreamPrefix(e.target.value)}
+                      className="mt-1 w-full px-2 py-1 border border-gray-300 rounded-md text-xs"
+                    />
+                  </label>
+                </div>
+                <div className="mt-2">
+                  <label className="text-xs text-gray-600">
+                    Token (optional)
+                    <input
+                      type="password"
+                      value={logAuthToken}
+                      onChange={(e) => setLogAuthToken(e.target.value)}
+                      placeholder="Bearer token"
+                      className="mt-1 w-full px-2 py-1 border border-gray-300 rounded-md text-xs"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
             {logError && (
               <p className="text-xs text-red-600 mb-2">✗ {logError}</p>
             )}
