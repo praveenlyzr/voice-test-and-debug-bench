@@ -8,6 +8,7 @@ REPO_ROOT="$SCRIPT_DIR"
 AWS_PROFILE="${AWS_PROFILE:-dev}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 SECRETS_FILE="${SECRETS_FILE:-$REPO_ROOT/.env.deploy}"
+STATE_FILE="${STATE_FILE:-$REPO_ROOT/aws-resources.json}"
 
 AMPLIFY_APP_NAME="${AMPLIFY_APP_NAME:-voice-test-and-debug-bench}"
 AMPLIFY_APP_ID="${AMPLIFY_APP_ID:-}"
@@ -103,6 +104,89 @@ append_env "CLOUDWATCH_LOGS_TOKEN" "$CLOUDWATCH_LOGS_TOKEN"
 append_env "ENABLE_CLOUDWATCH_LOGS" "$ENABLE_CLOUDWATCH_LOGS"
 append_env "NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS" "$NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS"
 
+update_state_file() {
+  if [ -z "$AMPLIFY_APP_ID" ]; then
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    log_error "python3 not found; skipping frontend AWS state update."
+    return 0
+  fi
+
+  local compute_role_arn service_role_arn default_domain app_url
+  compute_role_arn=$(aws amplify get-app \
+    --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+    --app-id "$AMPLIFY_APP_ID" \
+    --query 'app.computeRoleArn' --output text 2>/dev/null || echo "")
+  service_role_arn=$(aws amplify get-app \
+    --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+    --app-id "$AMPLIFY_APP_ID" \
+    --query 'app.iamServiceRoleArn' --output text 2>/dev/null || echo "")
+  default_domain=$(aws amplify get-app \
+    --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+    --app-id "$AMPLIFY_APP_ID" \
+    --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+
+  app_url=""
+  if [ -n "$default_domain" ] && [ "$default_domain" != "None" ]; then
+    app_url="https://${AMPLIFY_BRANCH}.${default_domain}"
+  fi
+
+  STATE_FILE="$STATE_FILE" \
+  AMPLIFY_APP_ID="$AMPLIFY_APP_ID" \
+  AMPLIFY_APP_NAME="$AMPLIFY_APP_NAME" \
+  AMPLIFY_BRANCH="$AMPLIFY_BRANCH" \
+  AWS_REGION="$AWS_REGION" \
+  APP_URL="$app_url" \
+  COMPUTE_ROLE_ARN="$compute_role_arn" \
+  SERVICE_ROLE_ARN="$service_role_arn" \
+  CLOUDWATCH_LOG_GROUP="$CLOUDWATCH_LOG_GROUP" \
+  CLOUDWATCH_STREAM_PREFIX="$CLOUDWATCH_STREAM_PREFIX" \
+  APP_CLOUDWATCH_REGION="$APP_CLOUDWATCH_REGION" \
+  python3 - <<'PY'
+import datetime
+import json
+import os
+
+path = os.environ["STATE_FILE"]
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+    except Exception:
+        data = {}
+
+amplify = data.get("amplify", {})
+amplify.update({
+    "app_id": os.environ.get("AMPLIFY_APP_ID") or None,
+    "app_name": os.environ.get("AMPLIFY_APP_NAME") or None,
+    "branch": os.environ.get("AMPLIFY_BRANCH") or None,
+    "region": os.environ.get("AWS_REGION") or None,
+    "app_url": os.environ.get("APP_URL") or None,
+    "compute_role_arn": os.environ.get("COMPUTE_ROLE_ARN") or None,
+    "service_role_arn": os.environ.get("SERVICE_ROLE_ARN") or None,
+})
+data["amplify"] = amplify
+
+cloudwatch = data.get("cloudwatch", {})
+cloudwatch.update({
+    "region": os.environ.get("APP_CLOUDWATCH_REGION") or None,
+    "log_group": os.environ.get("CLOUDWATCH_LOG_GROUP") or None,
+    "stream_prefix": os.environ.get("CLOUDWATCH_STREAM_PREFIX") or None,
+})
+data["cloudwatch"] = cloudwatch
+data["updated_at"] = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+
+  log_info "Updated frontend AWS state: $STATE_FILE"
+}
+
 if [ -z "$AMPLIFY_APP_ID" ]; then
   log_info "Looking up Amplify app by name: ${AMPLIFY_APP_NAME}"
   AMPLIFY_APP_ID=$(aws amplify list-apps     --profile "$AWS_PROFILE" --region "$AWS_REGION"     --query "apps[?name=='${AMPLIFY_APP_NAME}'].appId | [0]"     --output text)
@@ -147,6 +231,8 @@ if [ "${AMPLIFY_START_JOB}" = "true" ]; then
   log_info "Starting Amplify build (RELEASE) on ${AMPLIFY_BRANCH}"
   aws amplify start-job     --profile "$AWS_PROFILE" --region "$AWS_REGION"     --app-id "$AMPLIFY_APP_ID"     --branch-name "$AMPLIFY_BRANCH"     --job-type RELEASE >/dev/null
 fi
+
+update_state_file
 
 log_info "Amplify deploy triggered."
 log_info "App ID: ${AMPLIFY_APP_ID}"

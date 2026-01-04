@@ -1,0 +1,17 @@
+{
+  "amplify": {
+    "app_id": "d34c6t2vowzt3r",
+    "app_name": "voice-test-and-debug-bench",
+    "branch": "main",
+    "region": "us-east-1",
+    "app_url": "https://main.d34c6t2vowzt3r.amplifyapp.com",
+    "compute_role_arn": "arn:aws:iam::182399701833:role/amplify-cloudwatch-lambda-role",
+    "service_role_arn": "arn:aws:iam::182399701833:role/amplify-cloudwatch-logs-role"
+  },
+  "cloudwatch": {
+    "region": "us-east-1",
+    "log_group": "/livekit/voice",
+    "stream_prefix": "livekit"
+  },
+  "updated_at": "2026-01-04T01:25:00Z"
+}

@@ -207,6 +207,12 @@ are visible at runtime (booleans only).
 
 Do **not** enable these in production.
 
+## Frontend AWS State
+
+Frontend AWS resources (Amplify app + CloudWatch config) are tracked in:
+`livekit/frontend-test-bench/aws-resources.json`.
+`deploy-amplify.sh` updates this file after each run.
+
 ## CloudWatch Settings Panel
 
 When CloudWatch logs are enabled, the UI shows a settings panel for:
