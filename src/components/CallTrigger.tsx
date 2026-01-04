@@ -84,6 +84,7 @@ export default function CallTrigger() {
   );
   const [logAuthToken, setLogAuthToken] = useState('');
   const [curlCopyStatus, setCurlCopyStatus] = useState('');
+  const [configCopyStatus, setConfigCopyStatus] = useState('');
   const [cloudwatchProbeStatus, setCloudwatchProbeStatus] = useState('');
   const [cloudwatchProbeError, setCloudwatchProbeError] = useState('');
   const [cloudwatchProbeDetails, setCloudwatchProbeDetails] = useState('');
@@ -135,6 +136,7 @@ export default function CallTrigger() {
       setCloudwatchProbeError('');
       setCloudwatchProbeDetails('');
       setCurlCopyStatus('');
+      setConfigCopyStatus('');
     }
   }, [logSource]);
 
@@ -442,6 +444,36 @@ export default function CallTrigger() {
     }
   }, [logSource, buildCloudwatchParams, buildCloudwatchUrl, logAuthToken]);
 
+  const copyCloudwatchConfigJson = useCallback(async () => {
+    if (logSource !== 'cloudwatch') return;
+    const config = {
+      region: cloudwatchRegion.trim() || null,
+      logGroup: cloudwatchLogGroup.trim() || null,
+      streamPrefix: cloudwatchStreamPrefix.trim() || null,
+      token: logAuthToken.trim() || null,
+    };
+    const payload = JSON.stringify(config, null, 2);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+        setConfigCopyStatus('Copied');
+      } else {
+        throw new Error('Clipboard unavailable');
+      }
+    } catch {
+      setConfigCopyStatus('Copy failed');
+      window.prompt('Copy config JSON:', payload);
+    } finally {
+      window.setTimeout(() => setConfigCopyStatus(''), 2000);
+    }
+  }, [
+    logSource,
+    cloudwatchRegion,
+    cloudwatchLogGroup,
+    cloudwatchStreamPrefix,
+    logAuthToken,
+  ]);
+
   const checkCloudwatchConfig = useCallback(async () => {
     if (logSource !== 'cloudwatch') return;
     setCloudwatchConfigLoading(true);
@@ -607,6 +639,13 @@ export default function CallTrigger() {
     const id = setInterval(fetchLogs, 2000);
     return () => clearInterval(id);
   }, [logsEnabled, logAutoRefresh, fetchLogs]);
+
+  useEffect(() => {
+    if (!logsEnabled || !logAutoRefresh || logSource !== 'cloudwatch') return;
+    runCloudwatchProbe();
+    const id = setInterval(runCloudwatchProbe, 10000);
+    return () => clearInterval(id);
+  }, [logsEnabled, logAutoRefresh, logSource, runCloudwatchProbe]);
 
   const clearLogs = () => {
     setLogSince(Math.floor(Date.now() / 1000));
@@ -1050,8 +1089,17 @@ export default function CallTrigger() {
                   >
                     Copy curl
                   </button>
+                  <button
+                    onClick={copyCloudwatchConfigJson}
+                    className="px-3 py-1 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                  >
+                    Copy config JSON
+                  </button>
                   {curlCopyStatus && (
                     <span className="text-xs text-gray-600">{curlCopyStatus}</span>
+                  )}
+                  {configCopyStatus && (
+                    <span className="text-xs text-gray-600">{configCopyStatus}</span>
                   )}
                   {cloudwatchConfigError && (
                     <span className="text-xs text-red-600">

@@ -187,6 +187,7 @@ When CloudWatch logs are enabled, the UI shows a settings panel for:
 - Check server config (shows missing keys + effective values)
 - Test fetch (no filter) with line count
 - Copy curl (builds the exact API request)
+- Copy config JSON (includes the current overrides; token included if set)
 
 These values are stored in localStorage and are sent as query overrides to
 `/api/cloudwatch-logs`. Defaults are set to the LiveKit production values
@@ -197,6 +198,11 @@ These values are stored in localStorage and are sent as query overrides to
 **"CloudWatch logging is not configured."**
 - The app is missing `CLOUDWATCH_REGION` or `CLOUDWATCH_LOG_GROUP` at runtime, or the
   latest Amplify build hasn't picked up updated env vars yet. Set the env vars and
+  trigger a new build.
+
+**"Could not load credentials from any providers"**
+- The Amplify app has no IAM service role (or the role lacks CloudWatch permissions).
+  Attach a service role that can call `logs:FilterLogEvents` on your log group and
   trigger a new build.
 
 ## Repo structure
