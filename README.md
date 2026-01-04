@@ -168,6 +168,8 @@ Optional query overrides:
 - `streamPrefix`
 Debug:
 - `debug=1` returns the effective config + missing keys without fetching logs.
+It also includes `credentialHints` so you can see which AWS credential sources
+are visible at runtime (booleans only).
 
 ## Debugging toggles
 - `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`

@@ -4,6 +4,9 @@ import {
   FilterLogEventsCommand,
 } from '@aws-sdk/client-cloudwatch-logs';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const allowedServices = new Set(['livekit', 'agent', 'sip', 'redis', 'caddy', 'all']);
 
 function parseSince(raw: string | null): number | undefined {
@@ -60,6 +63,18 @@ export async function GET(request: NextRequest) {
   if (!logGroup) missing.push('CLOUDWATCH_LOG_GROUP');
 
   if (debug) {
+    const credentialHints = {
+      hasEnvAccessKey: Boolean(process.env.AWS_ACCESS_KEY_ID),
+      hasEnvSecretKey: Boolean(process.env.AWS_SECRET_ACCESS_KEY),
+      hasEnvSessionToken: Boolean(process.env.AWS_SESSION_TOKEN),
+      hasContainerRelativeUri: Boolean(process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI),
+      hasContainerFullUri: Boolean(process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI),
+      hasWebIdentityToken: Boolean(process.env.AWS_WEB_IDENTITY_TOKEN_FILE),
+      hasRoleArn: Boolean(process.env.AWS_ROLE_ARN),
+      hasProfile: Boolean(process.env.AWS_PROFILE),
+      executionEnv: process.env.AWS_EXECUTION_ENV || null,
+      lambdaFunction: process.env.AWS_LAMBDA_FUNCTION_NAME || null,
+    };
     return NextResponse.json(
       {
         enabled: enableLogs,
@@ -80,6 +95,7 @@ export async function GET(request: NextRequest) {
           logGroup: logGroupOverride || null,
           streamPrefix: streamPrefixOverride || null,
         },
+        credentialHints,
       },
       { status: 200 }
     );
