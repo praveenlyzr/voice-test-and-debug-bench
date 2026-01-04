@@ -45,6 +45,18 @@ export async function GET(request: NextRequest) {
   const logGroupOverride = (searchParams.get('logGroup') || '').trim();
   const streamPrefixOverride = (searchParams.get('streamPrefix') || '').trim();
 
+  const accessKeyId = (process.env.CLOUDWATCH_ACCESS_KEY_ID || '').trim();
+  const secretAccessKey = (process.env.CLOUDWATCH_SECRET_ACCESS_KEY || '').trim();
+  const sessionToken = (process.env.CLOUDWATCH_SESSION_TOKEN || '').trim();
+  const explicitCredentials =
+    accessKeyId && secretAccessKey
+      ? {
+          accessKeyId,
+          secretAccessKey,
+          ...(sessionToken ? { sessionToken } : {}),
+        }
+      : undefined;
+
   const envRegion =
     process.env.CLOUDWATCH_REGION ||
     process.env.CLOUDWATCH_AWS_REGION ||
@@ -96,6 +108,12 @@ export async function GET(request: NextRequest) {
           streamPrefix: streamPrefixOverride || null,
         },
         credentialHints,
+        explicitCredentialHints: {
+          hasAccessKeyId: Boolean(accessKeyId),
+          hasSecretAccessKey: Boolean(secretAccessKey),
+          hasSessionToken: Boolean(sessionToken),
+          usingExplicitCredentials: Boolean(explicitCredentials),
+        },
       },
       { status: 200 }
     );
@@ -126,7 +144,10 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
-    const client = new CloudWatchLogsClient({ region });
+    const client = new CloudWatchLogsClient({
+      region,
+      credentials: explicitCredentials,
+    });
     const command = new FilterLogEventsCommand({
       logGroupName: logGroup,
       logStreamNamePrefix,

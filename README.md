@@ -34,24 +34,30 @@ ENABLE_CLOUDWATCH_LOGS=true
 CLOUDWATCH_LOG_GROUP=/livekit/production
 CLOUDWATCH_STREAM_PREFIX=livekit
 CLOUDWATCH_LOGS_TOKEN=your-debug-token
+## Optional explicit credentials (fallback if SSR role isn't available)
+# CLOUDWATCH_ACCESS_KEY_ID=...
+# CLOUDWATCH_SECRET_ACCESS_KEY=...
+# CLOUDWATCH_SESSION_TOKEN=... (optional)
 ```
 
 Notes:
-- In Amplify, the app role must allow `logs:FilterLogEvents` (and `logs:DescribeLogStreams` if needed) for the log group.
+- In Amplify, both the **app service role** and **compute role** should allow
+  `logs:FilterLogEvents` (and `logs:DescribeLogStreams`) for the log group.
 - Amplify blocks env vars starting with `AWS_`; use `CLOUDWATCH_REGION` instead.
 - If `CLOUDWATCH_LOGS_TOKEN` is set, paste the token in the UI (the request sends `Authorization: Bearer <token>`).
 
 ### One-time Amplify CloudWatch setup (copy/paste)
-This creates/attaches an Amplify service role (if missing), grants it read access to the log group, sets env vars on `main`, and verifies the stream prefix.
+This creates/attaches an Amplify service role (if missing), creates a Lambda compute role,
+grants CloudWatch read access, sets env vars on `main`, and verifies the stream prefix.
 
 ```bash
 AWS_PROFILE=dev AWS_REGION=us-east-1 AMPLIFY_APP_ID=d34c6t2vowzt3r \
 CLOUDWATCH_LOG_GROUP=/livekit/voice CLOUDWATCH_STREAM_PREFIX=livekit \
 bash -c 'set -euo pipefail
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-ROLE_NAME="amplify-cloudwatch-logs-role"
-ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
-TRUST_POLICY=$(cat <<JSON
+SERVICE_ROLE_NAME="amplify-cloudwatch-logs-role"
+SERVICE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${SERVICE_ROLE_NAME}"
+SERVICE_TRUST_POLICY=$(cat <<JSON
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -64,10 +70,10 @@ TRUST_POLICY=$(cat <<JSON
 }
 JSON
 )
-if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-  aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "$TRUST_POLICY"
+if ! aws iam get-role --role-name "$SERVICE_ROLE_NAME" >/dev/null 2>&1; then
+  aws iam create-role --role-name "$SERVICE_ROLE_NAME" --assume-role-policy-document "$SERVICE_TRUST_POLICY"
 fi
-POLICY=$(cat <<JSON
+LOG_POLICY=$(cat <<JSON
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -86,8 +92,30 @@ POLICY=$(cat <<JSON
 }
 JSON
 )
-aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name AmplifyCloudWatchLogsRead --policy-document "$POLICY"
-aws amplify update-app --app-id "$AMPLIFY_APP_ID" --iam-service-role-arn "$ROLE_ARN"
+aws iam put-role-policy --role-name "$SERVICE_ROLE_NAME" --policy-name AmplifyCloudWatchLogsRead --policy-document "$LOG_POLICY"
+
+COMPUTE_ROLE_NAME="amplify-cloudwatch-lambda-role"
+COMPUTE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${COMPUTE_ROLE_NAME}"
+COMPUTE_TRUST_POLICY=$(cat <<JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "lambda.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+JSON
+)
+if ! aws iam get-role --role-name "$COMPUTE_ROLE_NAME" >/dev/null 2>&1; then
+  aws iam create-role --role-name "$COMPUTE_ROLE_NAME" --assume-role-policy-document "$COMPUTE_TRUST_POLICY"
+fi
+aws iam attach-role-policy --role-name "$COMPUTE_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+aws iam put-role-policy --role-name "$COMPUTE_ROLE_NAME" --policy-name AmplifyCloudWatchLogsRead --policy-document "$LOG_POLICY"
+
+aws amplify update-app --app-id "$AMPLIFY_APP_ID" --iam-service-role-arn "$SERVICE_ROLE_ARN" --compute-role-arn "$COMPUTE_ROLE_ARN"
 ENV_VARS="NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true,ENABLE_CLOUDWATCH_LOGS=true,CLOUDWATCH_REGION=$AWS_REGION,CLOUDWATCH_LOG_GROUP=$CLOUDWATCH_LOG_GROUP,CLOUDWATCH_STREAM_PREFIX=$CLOUDWATCH_STREAM_PREFIX"
 if [ -n "${CLOUDWATCH_LOGS_TOKEN:-}" ]; then
   ENV_VARS="$ENV_VARS,CLOUDWATCH_LOGS_TOKEN=$CLOUDWATCH_LOGS_TOKEN"
@@ -206,6 +234,11 @@ These values are stored in localStorage and are sent as query overrides to
 - The Amplify app has no IAM service role (or the role lacks CloudWatch permissions).
   Attach a service role that can call `logs:FilterLogEvents` on your log group and
   trigger a new build.
+- If `debug=1` shows `credentialHints` all false, the SSR Lambda isn't seeing any
+  AWS credential source. Find the `Compute-<appId>-...` Lambda role and attach the
+  CloudWatch read policy to that role, then redeploy.
+- If you can't locate the compute role, use the optional `CLOUDWATCH_ACCESS_KEY_ID`
+  + `CLOUDWATCH_SECRET_ACCESS_KEY` env vars as a temporary fallback (server-only).
 
 ## Repo structure
 ```
