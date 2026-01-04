@@ -21,10 +21,6 @@ export async function GET(request: NextRequest) {
     process.env.ENABLE_CLOUDWATCH_LOGS === 'true' ||
     process.env.NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS === 'true';
 
-  if (!enableLogs) {
-    return NextResponse.json({ error: 'Not available' }, { status: 404 });
-  }
-
   const token = process.env.CLOUDWATCH_LOGS_TOKEN || '';
   if (token) {
     const authHeader = request.headers.get('authorization') || '';
@@ -35,25 +31,61 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
+  const debugRaw = (searchParams.get('debug') || '').toLowerCase();
+  const debug = debugRaw === '1' || debugRaw === 'true' || debugRaw === 'yes';
+
+  if (!enableLogs && !debug) {
+    return NextResponse.json({ error: 'Not available' }, { status: 404 });
+  }
+
   const regionOverride = (searchParams.get('region') || '').trim();
   const logGroupOverride = (searchParams.get('logGroup') || '').trim();
   const streamPrefixOverride = (searchParams.get('streamPrefix') || '').trim();
 
-  const region =
-    regionOverride ||
+  const envRegion =
     process.env.CLOUDWATCH_REGION ||
     process.env.CLOUDWATCH_AWS_REGION ||
     process.env.AWS_REGION ||
     process.env.AWS_DEFAULT_REGION ||
     '';
-  const logGroup = logGroupOverride || process.env.CLOUDWATCH_LOG_GROUP || '';
-  const streamPrefix =
-    streamPrefixOverride || process.env.CLOUDWATCH_STREAM_PREFIX || 'livekit';
+  const envLogGroup = process.env.CLOUDWATCH_LOG_GROUP || '';
+  const envStreamPrefix = process.env.CLOUDWATCH_STREAM_PREFIX || 'livekit';
 
-  if (!region || !logGroup) {
-    const missing: string[] = [];
-    if (!region) missing.push('CLOUDWATCH_REGION');
-    if (!logGroup) missing.push('CLOUDWATCH_LOG_GROUP');
+  const region = regionOverride || envRegion || '';
+  const logGroup = logGroupOverride || envLogGroup || '';
+  const streamPrefix = streamPrefixOverride || envStreamPrefix || 'livekit';
+
+  const missing: string[] = [];
+  if (!region) missing.push('CLOUDWATCH_REGION');
+  if (!logGroup) missing.push('CLOUDWATCH_LOG_GROUP');
+
+  if (debug) {
+    return NextResponse.json(
+      {
+        enabled: enableLogs,
+        configured: missing.length === 0,
+        missing,
+        effective: {
+          region: region || null,
+          logGroup: logGroup || null,
+          streamPrefix: streamPrefix || null,
+        },
+        env: {
+          region: envRegion || null,
+          logGroup: envLogGroup || null,
+          streamPrefix: envStreamPrefix || null,
+        },
+        overrides: {
+          region: regionOverride || null,
+          logGroup: logGroupOverride || null,
+          streamPrefix: streamPrefixOverride || null,
+        },
+      },
+      { status: 200 }
+    );
+  }
+
+  if (missing.length > 0) {
     return NextResponse.json(
       { error: 'CloudWatch logging is not configured.', missing },
       { status: 500 }

@@ -72,6 +72,7 @@ export default function CallTrigger() {
   const [logTail, setLogTail] = useState(200);
   const [logText, setLogText] = useState('');
   const [logError, setLogError] = useState('');
+  const [logErrorDetails, setLogErrorDetails] = useState('');
   const [logLoading, setLogLoading] = useState(false);
   const [logAutoRefresh, setLogAutoRefresh] = useState(false);
   const [logFilter, setLogFilter] = useState('');
@@ -82,6 +83,33 @@ export default function CallTrigger() {
     enableCloudwatchLogs ? 'cloudwatch' : 'local',
   );
   const [logAuthToken, setLogAuthToken] = useState('');
+  const [curlCopyStatus, setCurlCopyStatus] = useState('');
+  const [cloudwatchProbeStatus, setCloudwatchProbeStatus] = useState('');
+  const [cloudwatchProbeError, setCloudwatchProbeError] = useState('');
+  const [cloudwatchProbeDetails, setCloudwatchProbeDetails] = useState('');
+  const [cloudwatchProbeLoading, setCloudwatchProbeLoading] = useState(false);
+  const [cloudwatchConfig, setCloudwatchConfig] = useState<{
+    enabled: boolean;
+    configured: boolean;
+    missing: string[];
+    effective: {
+      region: string | null;
+      logGroup: string | null;
+      streamPrefix: string | null;
+    };
+    env?: {
+      region: string | null;
+      logGroup: string | null;
+      streamPrefix: string | null;
+    };
+    overrides?: {
+      region: string | null;
+      logGroup: string | null;
+      streamPrefix: string | null;
+    };
+  } | null>(null);
+  const [cloudwatchConfigError, setCloudwatchConfigError] = useState('');
+  const [cloudwatchConfigLoading, setCloudwatchConfigLoading] = useState(false);
   const [cloudwatchRegion, setCloudwatchRegion] = useState(
     CLOUDWATCH_DEFAULTS.region,
   );
@@ -98,6 +126,17 @@ export default function CallTrigger() {
       roomRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (logSource !== 'cloudwatch') {
+      setCloudwatchConfig(null);
+      setCloudwatchConfigError('');
+      setCloudwatchProbeStatus('');
+      setCloudwatchProbeError('');
+      setCloudwatchProbeDetails('');
+      setCurlCopyStatus('');
+    }
+  }, [logSource]);
 
   useEffect(() => {
     try {
@@ -317,31 +356,205 @@ export default function CallTrigger() {
     localStorage.removeItem(CLOUDWATCH_SETTINGS_KEY);
   };
 
+  const readResponseBody = useCallback(async (response: Response) => {
+    const clone = response.clone();
+    try {
+      const json = await clone.json();
+      return { json, text: null as string | null };
+    } catch {
+      try {
+        const text = await clone.text();
+        return { json: null as unknown, text };
+      } catch {
+        return { json: null as unknown, text: null as string | null };
+      }
+    }
+  }, []);
+
+  const buildCloudwatchParams = useCallback(
+    ({
+      includeFilter = true,
+      includeSince = true,
+      tail = logTail,
+      service = logService,
+    }: {
+      includeFilter?: boolean;
+      includeSince?: boolean;
+      tail?: number;
+      service?: string;
+    } = {}) => {
+      const params = new URLSearchParams({
+        service,
+        tail: String(tail),
+      });
+      if (includeSince && logSince) {
+        params.set('since', String(logSince));
+      }
+      if (includeFilter && logFilter.trim()) {
+        params.set('filter', logFilter.trim());
+      }
+      const region = cloudwatchRegion.trim();
+      const logGroup = cloudwatchLogGroup.trim();
+      const streamPrefix = cloudwatchStreamPrefix.trim();
+      if (region) params.set('region', region);
+      if (logGroup) params.set('logGroup', logGroup);
+      if (streamPrefix) params.set('streamPrefix', streamPrefix);
+      return params;
+    },
+    [
+      logService,
+      logTail,
+      logSince,
+      logFilter,
+      cloudwatchRegion,
+      cloudwatchLogGroup,
+      cloudwatchStreamPrefix,
+    ],
+  );
+
+  const buildCloudwatchUrl = useCallback((params: URLSearchParams) => {
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : '';
+    const prefix = origin || '';
+    return `${prefix}/api/cloudwatch-logs?${params.toString()}`;
+  }, []);
+
+  const copyCloudwatchCurl = useCallback(async () => {
+    if (logSource !== 'cloudwatch') return;
+    const params = buildCloudwatchParams();
+    const url = buildCloudwatchUrl(params);
+    const token = logAuthToken.trim();
+    const command = token
+      ? `curl -sS -H "Authorization: Bearer ${token}" "${url}"`
+      : `curl -sS "${url}"`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(command);
+        setCurlCopyStatus('Copied');
+      } else {
+        throw new Error('Clipboard unavailable');
+      }
+    } catch {
+      setCurlCopyStatus('Copy failed');
+      window.prompt('Copy curl command:', command);
+    } finally {
+      window.setTimeout(() => setCurlCopyStatus(''), 2000);
+    }
+  }, [logSource, buildCloudwatchParams, buildCloudwatchUrl, logAuthToken]);
+
+  const checkCloudwatchConfig = useCallback(async () => {
+    if (logSource !== 'cloudwatch') return;
+    setCloudwatchConfigLoading(true);
+    setCloudwatchConfigError('');
+    try {
+      const params = new URLSearchParams({
+        debug: '1',
+        region: cloudwatchRegion.trim(),
+        logGroup: cloudwatchLogGroup.trim(),
+        streamPrefix: cloudwatchStreamPrefix.trim(),
+      });
+      const headers: HeadersInit = {};
+      if (logAuthToken.trim()) {
+        headers.Authorization = `Bearer ${logAuthToken.trim()}`;
+      }
+      const response = await fetch(`/api/cloudwatch-logs?${params.toString()}`, {
+        headers,
+      });
+      const { json, text } = await readResponseBody(response);
+      if (!response.ok) {
+        const message =
+          (json as { error?: string } | null)?.error ||
+          text ||
+          'Failed to check config';
+        setCloudwatchConfigError(message);
+        setCloudwatchConfig(null);
+        return;
+      }
+      setCloudwatchConfig((json as typeof cloudwatchConfig) || null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCloudwatchConfigError(message);
+      setCloudwatchConfig(null);
+    } finally {
+      setCloudwatchConfigLoading(false);
+    }
+  }, [
+    logSource,
+    cloudwatchRegion,
+    cloudwatchLogGroup,
+    cloudwatchStreamPrefix,
+    logAuthToken,
+  ]);
+
+  const runCloudwatchProbe = useCallback(async () => {
+    if (logSource !== 'cloudwatch') return;
+    setCloudwatchProbeLoading(true);
+    setCloudwatchProbeStatus('');
+    setCloudwatchProbeError('');
+    setCloudwatchProbeDetails('');
+    try {
+      const params = buildCloudwatchParams({
+        includeFilter: false,
+        includeSince: false,
+        tail: 50,
+      });
+      const headers: HeadersInit = {};
+      if (logAuthToken.trim()) {
+        headers.Authorization = `Bearer ${logAuthToken.trim()}`;
+      }
+      const response = await fetch(`/api/cloudwatch-logs?${params.toString()}`, {
+        headers,
+      });
+      const { json, text } = await readResponseBody(response);
+      if (!response.ok) {
+        const message =
+          (json as { error?: string } | null)?.error ||
+          text ||
+          'Failed to fetch logs';
+        setCloudwatchProbeError(message);
+        setCloudwatchProbeDetails(
+          json ? JSON.stringify(json, null, 2) : text || '',
+        );
+        return;
+      }
+      const data = (json as { logs?: string; service?: string }) || {};
+      const lines = (data.logs || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      setCloudwatchProbeStatus(
+        `Fetched ${lines.length} lines from ${data.service || logService}.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCloudwatchProbeError(message);
+    } finally {
+      setCloudwatchProbeLoading(false);
+    }
+  }, [
+    logSource,
+    buildCloudwatchParams,
+    logAuthToken,
+    readResponseBody,
+    logService,
+  ]);
+
   const fetchLogs = useCallback(async () => {
     if (!logsEnabled) return;
     setLogLoading(true);
     setLogError('');
+    setLogErrorDetails('');
     try {
-      const params = new URLSearchParams({
-        service: logService,
-        tail: String(logTail),
-      });
-      if (logSince) {
-        params.set('since', String(logSince));
-      }
-      if (logSource === 'cloudwatch' && logFilter.trim()) {
-        params.set('filter', logFilter.trim());
-      }
-      if (logSource === 'cloudwatch') {
-        const region = cloudwatchRegion.trim();
-        const logGroup = cloudwatchLogGroup.trim();
-        const streamPrefix = cloudwatchStreamPrefix.trim();
-        if (region) params.set('region', region);
-        if (logGroup) params.set('logGroup', logGroup);
-        if (streamPrefix) params.set('streamPrefix', streamPrefix);
-      }
       const endpoint =
         logSource === 'cloudwatch' ? '/api/cloudwatch-logs' : '/api/local-logs';
+      const params =
+        logSource === 'cloudwatch'
+          ? buildCloudwatchParams()
+          : new URLSearchParams({
+              service: logService,
+              tail: String(logTail),
+              ...(logSince ? { since: String(logSince) } : {}),
+            });
       const headers: HeadersInit = {};
       if (logSource === 'cloudwatch' && logAuthToken.trim()) {
         headers.Authorization = `Bearer ${logAuthToken.trim()}`;
@@ -349,12 +562,24 @@ export default function CallTrigger() {
       const response = await fetch(`${endpoint}?${params.toString()}`, {
         headers,
       });
-      const data = await response.json();
+      const { json, text } = await readResponseBody(response);
       if (!response.ok) {
-        setLogError(data.error || 'Failed to fetch logs');
+        const message =
+          (json as { error?: string } | null)?.error ||
+          text ||
+          'Failed to fetch logs';
+        setLogError(message);
+        setLogErrorDetails(json ? JSON.stringify(json, null, 2) : text || '');
+        return;
+      }
+      const data = (json as { logs?: string } | null) || {};
+      if (!json && text) {
+        setLogError('Unexpected response from log endpoint');
+        setLogErrorDetails(text);
         return;
       }
       setLogText(data.logs || '');
+      setLogErrorDetails('');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setLogError(message);
@@ -369,6 +594,8 @@ export default function CallTrigger() {
     logSince,
     logFilter,
     logAuthToken,
+    buildCloudwatchParams,
+    readResponseBody,
     cloudwatchRegion,
     cloudwatchLogGroup,
     cloudwatchStreamPrefix,
@@ -802,10 +1029,97 @@ export default function CallTrigger() {
                     />
                   </label>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={checkCloudwatchConfig}
+                    disabled={cloudwatchConfigLoading}
+                    className="px-3 py-1 text-xs rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {cloudwatchConfigLoading ? 'Checking...' : 'Check server config'}
+                  </button>
+                  <button
+                    onClick={runCloudwatchProbe}
+                    disabled={cloudwatchProbeLoading}
+                    className="px-3 py-1 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                  >
+                    {cloudwatchProbeLoading ? 'Testing...' : 'Test fetch (no filter)'}
+                  </button>
+                  <button
+                    onClick={copyCloudwatchCurl}
+                    className="px-3 py-1 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                  >
+                    Copy curl
+                  </button>
+                  {curlCopyStatus && (
+                    <span className="text-xs text-gray-600">{curlCopyStatus}</span>
+                  )}
+                  {cloudwatchConfigError && (
+                    <span className="text-xs text-red-600">
+                      ✗ {cloudwatchConfigError}
+                    </span>
+                  )}
+                </div>
+                {(cloudwatchProbeStatus || cloudwatchProbeError) && (
+                  <div className="mt-2 text-xs text-gray-600">
+                    {cloudwatchProbeStatus && (
+                      <span className="text-green-700">✓ {cloudwatchProbeStatus}</span>
+                    )}
+                    {cloudwatchProbeError && (
+                      <span className="text-red-600">✗ {cloudwatchProbeError}</span>
+                    )}
+                  </div>
+                )}
+                {cloudwatchProbeDetails && (
+                  <details className="mt-2 text-xs text-gray-600">
+                    <summary className="cursor-pointer">Show test details</summary>
+                    <pre className="mt-1 whitespace-pre-wrap rounded-md border border-gray-200 bg-white p-2">
+                      {cloudwatchProbeDetails}
+                    </pre>
+                  </details>
+                )}
+                {cloudwatchConfig && (
+                  <div className="mt-2 text-xs text-gray-600 space-y-1">
+                    <div>
+                      Server logs:{' '}
+                      {cloudwatchConfig.enabled ? 'enabled' : 'disabled'}
+                      {' · '}
+                      {cloudwatchConfig.configured
+                        ? 'configured'
+                        : `missing ${cloudwatchConfig.missing.join(', ')}`}
+                    </div>
+                    <div>
+                      Effective: {cloudwatchConfig.effective.region || '—'} ·{' '}
+                      {cloudwatchConfig.effective.logGroup || '—'} ·{' '}
+                      {cloudwatchConfig.effective.streamPrefix || '—'}
+                    </div>
+                    {cloudwatchConfig.env && (
+                      <div>
+                        Env: {cloudwatchConfig.env.region || '—'} ·{' '}
+                        {cloudwatchConfig.env.logGroup || '—'} ·{' '}
+                        {cloudwatchConfig.env.streamPrefix || '—'}
+                      </div>
+                    )}
+                    {cloudwatchConfig.overrides && (
+                      <div>
+                        Overrides: {cloudwatchConfig.overrides.region || '—'} ·{' '}
+                        {cloudwatchConfig.overrides.logGroup || '—'} ·{' '}
+                        {cloudwatchConfig.overrides.streamPrefix || '—'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {logError && (
               <p className="text-xs text-red-600 mb-2">✗ {logError}</p>
+            )}
+            {logErrorDetails && (
+              <details className="text-xs text-gray-600 mb-2">
+                <summary className="cursor-pointer">Show raw error</summary>
+                <pre className="mt-1 whitespace-pre-wrap rounded-md border border-gray-200 bg-white p-2">
+                  {logErrorDetails}
+                </pre>
+              </details>
             )}
             {logSince ? (
               <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-2">

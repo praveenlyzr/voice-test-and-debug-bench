@@ -166,6 +166,8 @@ Optional query overrides:
 - `region`
 - `logGroup`
 - `streamPrefix`
+Debug:
+- `debug=1` returns the effective config + missing keys without fetching logs.
 
 ## Debugging toggles
 - `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`
@@ -182,6 +184,9 @@ When CloudWatch logs are enabled, the UI shows a settings panel for:
 - Log group
 - Stream prefix
 - Optional bearer token
+- Check server config (shows missing keys + effective values)
+- Test fetch (no filter) with line count
+- Copy curl (builds the exact API request)
 
 These values are stored in localStorage and are sent as query overrides to
 `/api/cloudwatch-logs`. Defaults are set to the LiveKit production values
