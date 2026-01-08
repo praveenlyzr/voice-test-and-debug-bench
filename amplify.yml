@@ -5,6 +5,8 @@ applications:
       phases:
         preBuild:
           commands:
+            - nvm install 18.20.4
+            - nvm use 18.20.4
             - npm ci
         build:
           commands:
