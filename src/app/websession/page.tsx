@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { connect, Room, RoomEvent } from 'livekit-client';
+import { Room, RoomEvent } from 'livekit-client';
 
 const DEFAULT_INSTRUCTIONS = `You are a helpful voice AI assistant for phone calls.
 Be concise, friendly, and professional.
@@ -34,19 +34,22 @@ export default function WebSessionPage() {
     async (info: { token: string; livekitUrl: string }) => {
       try {
         setStatus('Connecting…');
-        const room = await connect(info.livekitUrl, info.token, {
-          autoSubscribe: true,
-        });
+        const room = new Room();
         roomRef.current = room;
-        setStatus('Connected');
         room.on(RoomEvent.Disconnected, () => setStatus('Disconnected'));
         room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === 'audio' && audioRef.current) {
             track.attach(audioRef.current);
           }
         });
+        await room.connect(info.livekitUrl, info.token, {
+          autoSubscribe: true,
+        });
+        setStatus('Connected');
       } catch (err) {
         setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        roomRef.current?.disconnect();
+        roomRef.current = null;
       }
     },
     []
