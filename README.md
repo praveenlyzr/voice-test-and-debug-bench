@@ -1,15 +1,77 @@
-# Voice Test & Debug Bench (Frontend)
+# LiveKit Voice Test Bench
 
-A simple, stateless Next.js UI to trigger outbound SIP calls via LiveKit and to test the agent in a browser session.
+A Next.js frontend for testing and monitoring LiveKit voice AI calls and sessions.
 
-## What it does
-- Place outbound calls (E.164 phone numbers)
-- Choose STT/LLM/TTS per call
-- Edit agent instructions
-- Browser-based voice test (WebRTC) with the agent
-- Optional log viewers for debugging (local or CloudWatch)
+## Features
 
-## Local development
+- **Dashboard** - Overview with auto-refreshing stats (active calls, registered numbers, agent configs)
+- **Numbers** - View and manage registered phone numbers with SIP configurations
+- **Web Session** - Browser-based voice testing with saved or custom configs
+- **Outbound** - Place outbound phone calls with value_sources transparency
+- **Live Calls** - Real-time monitoring of active rooms and participants
+- **Plugins** - View available STT, LLM, and TTS providers
+- **Configs** - Manage saved agent configurations
+- **Logs** - CloudWatch and local log viewer
+
+## Pages Overview
+
+### Dashboard (`/`)
+Overview page with:
+- Active calls count (auto-refresh every 10s)
+- Registered numbers count
+- Agent configs count
+- System status indicator
+- Quick action buttons
+- Recent activity feed (aggregated from all pages)
+
+### Numbers (`/numbers`)
+View all registered phone numbers:
+- Phone number display with formatting
+- Inbound/outbound trunk IDs
+- Agent config association
+- Configuration status badges (Configured/Partial/Missing)
+- Expandable details with full JSON
+
+### Web Session (`/web-session`)
+Browser-based voice testing:
+- Mode toggle: "Use Saved Config" or "Custom Config"
+- Saved config dropdown (from database)
+- Model selectors for STT, LLM, TTS with grouped options
+- Agent instructions editor
+- Real-time connection status
+- Value sources display (shows where each config value came from)
+- Activity log
+
+### Outbound (`/outbound`)
+Place outbound phone calls:
+- Caller number selector (from registered numbers)
+- Recipient number input with auto-formatting
+- Mode toggle for saved/custom config
+- Model selectors with descriptions
+- Call status with room info
+- `value_sources` and `defaults_used` display
+- Activity log
+
+### Live Calls (`/live`)
+Real-time call monitoring:
+- Active rooms list with participant count
+- Auto-refresh every 5 seconds (configurable)
+- Expandable room details:
+  - Room metadata
+  - Participant info (identity, state, join time)
+  - Track details (type, source, muted status)
+- End call button for each room
+- Stats bar (rooms, participants, tracks)
+
+### Plugins (`/plugins`)
+Available provider information:
+- STT providers (AssemblyAI, Deepgram, OpenAI)
+- LLM providers (OpenAI)
+- TTS providers (ElevenLabs, OpenAI)
+- Model lists with descriptions
+- Required environment variables
+
+## Local Development
 
 ```bash
 npm install
@@ -19,148 +81,39 @@ npm run dev
 
 Open http://localhost:3000.
 
-### Required env vars (local)
-```
-LIVEKIT_URL=wss://voice.preview.studio.lyzr.ai
+### Required env vars
+```env
+# Backend API
+NEXT_PUBLIC_CONTROL_API_URL=http://localhost:7000
+
+# LiveKit credentials
+LIVEKIT_URL=wss://your-livekit-url
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 ```
 
-### Optional CloudWatch logs (local or Amplify)
-```
+### Optional CloudWatch logs
+```env
 CLOUDWATCH_REGION=us-east-1
 NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true
 ENABLE_CLOUDWATCH_LOGS=true
 CLOUDWATCH_LOG_GROUP=/livekit/production
 CLOUDWATCH_STREAM_PREFIX=livekit
 CLOUDWATCH_LOGS_TOKEN=your-debug-token
-## Optional explicit credentials (fallback if SSR role isn't available)
-# CLOUDWATCH_ACCESS_KEY_ID=...
-# CLOUDWATCH_SECRET_ACCESS_KEY=...
-# CLOUDWATCH_SESSION_TOKEN=... (optional)
 ```
 
-Notes:
-- In Amplify, both the **app service role** and **compute role** should allow
-  `logs:FilterLogEvents` (and `logs:DescribeLogStreams`) for the log group.
-- Amplify blocks env vars starting with `AWS_`; use `CLOUDWATCH_REGION` instead.
-- If `CLOUDWATCH_LOGS_TOKEN` is set, paste the token in the UI (the request sends `Authorization: Bearer <token>`).
+## API Routes
 
-### One-time Amplify CloudWatch setup (copy/paste)
-This creates/attaches an Amplify service role (if missing), creates a Lambda compute role,
-grants CloudWatch read access, sets env vars on `main`, and verifies the stream prefix.
-
-```bash
-AWS_PROFILE=dev AWS_REGION=us-east-1 AMPLIFY_APP_ID=d34c6t2vowzt3r \
-CLOUDWATCH_LOG_GROUP=/livekit/voice CLOUDWATCH_STREAM_PREFIX=livekit \
-bash -c 'set -euo pipefail
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-SERVICE_ROLE_NAME="amplify-cloudwatch-logs-role"
-SERVICE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${SERVICE_ROLE_NAME}"
-SERVICE_TRUST_POLICY=$(cat <<JSON
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": { "Service": "amplify.amazonaws.com" },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-JSON
-)
-if ! aws iam get-role --role-name "$SERVICE_ROLE_NAME" >/dev/null 2>&1; then
-  aws iam create-role --role-name "$SERVICE_ROLE_NAME" --assume-role-policy-document "$SERVICE_TRUST_POLICY"
-fi
-LOG_POLICY=$(cat <<JSON
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:FilterLogEvents",
-        "logs:DescribeLogStreams"
-      ],
-      "Resource": [
-        "arn:aws:logs:${AWS_REGION}:*:log-group:${CLOUDWATCH_LOG_GROUP}",
-        "arn:aws:logs:${AWS_REGION}:*:log-group:${CLOUDWATCH_LOG_GROUP}:*"
-      ]
-    }
-  ]
-}
-JSON
-)
-aws iam put-role-policy --role-name "$SERVICE_ROLE_NAME" --policy-name AmplifyCloudWatchLogsRead --policy-document "$LOG_POLICY"
-
-COMPUTE_ROLE_NAME="amplify-cloudwatch-lambda-role"
-COMPUTE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${COMPUTE_ROLE_NAME}"
-COMPUTE_TRUST_POLICY=$(cat <<JSON
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": { "Service": "lambda.amazonaws.com" },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-JSON
-)
-if ! aws iam get-role --role-name "$COMPUTE_ROLE_NAME" >/dev/null 2>&1; then
-  aws iam create-role --role-name "$COMPUTE_ROLE_NAME" --assume-role-policy-document "$COMPUTE_TRUST_POLICY"
-fi
-aws iam attach-role-policy --role-name "$COMPUTE_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-aws iam put-role-policy --role-name "$COMPUTE_ROLE_NAME" --policy-name AmplifyCloudWatchLogsRead --policy-document "$LOG_POLICY"
-
-aws amplify update-app --app-id "$AMPLIFY_APP_ID" --iam-service-role-arn "$SERVICE_ROLE_ARN" --compute-role-arn "$COMPUTE_ROLE_ARN"
-ENV_VARS="NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true,ENABLE_CLOUDWATCH_LOGS=true,CLOUDWATCH_REGION=$AWS_REGION,CLOUDWATCH_LOG_GROUP=$CLOUDWATCH_LOG_GROUP,CLOUDWATCH_STREAM_PREFIX=$CLOUDWATCH_STREAM_PREFIX"
-if [ -n "${CLOUDWATCH_LOGS_TOKEN:-}" ]; then
-  ENV_VARS="$ENV_VARS,CLOUDWATCH_LOGS_TOKEN=$CLOUDWATCH_LOGS_TOKEN"
-fi
-aws amplify update-branch --app-id "$AMPLIFY_APP_ID" --branch-name main --environment-variables "$ENV_VARS"
-aws logs describe-log-streams --log-group-name "$CLOUDWATCH_LOG_GROUP" --log-stream-name-prefix "${CLOUDWATCH_STREAM_PREFIX}/" --max-items 5 --output table
-'
-```
-
-## Amplify deployment (recommended)
-
-### Console setup (fastest)
-1. Amplify Console → New app → Host web app → GitHub
-2. Select this repo + branch
-3. App root: `.`
-4. Build spec: `amplify.yml`
-5. Add env vars:
-   - `LIVEKIT_URL`
-   - `LIVEKIT_API_KEY`
-   - `LIVEKIT_API_SECRET`
-   - (Optional) `CLOUDWATCH_REGION`, `CLOUDWATCH_LOG_GROUP`, `CLOUDWATCH_STREAM_PREFIX`,
-     `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS`, `ENABLE_CLOUDWATCH_LOGS`, `CLOUDWATCH_LOGS_TOKEN`
-6. Deploy
-
-### Scripted setup (CLI)
-1. Create `.env.deploy` from the example:
-
-```bash
-cp .env.deploy.example .env.deploy
-```
-
-2. Run the script:
-
-```bash
-export AMPLIFY_REPOSITORY="https://github.com/NeuralgoLyzr/voice-module-research"
-export AMPLIFY_ACCESS_TOKEN="<github_pat_with_repo + webhook access>"
-export AMPLIFY_BRANCH="main"
-AWS_PROFILE=dev AWS_REGION=us-east-1 CLOUDWATCH_REGION=us-east-1 bash deploy-amplify.sh
-```
-
-Notes:
-- The PAT must be able to create webhooks (GitHub may block PATs in orgs; use the Amplify GitHub App if so).
-- `deploy-amplify.sh` reads `.env.deploy` by default.
-
-## API endpoints (server routes)
+| Route | Description |
+|-------|-------------|
+| `GET /api/rooms` | List active LiveKit rooms with participants |
+| `DELETE /api/rooms?room=name` | Delete/end a room |
+| `GET /api/sip-configs` | Get registered SIP configurations |
+| `GET /api/agent-configs` | Get saved agent configurations |
+| `POST /api/make-call` | Initiate outbound call |
+| `POST /api/start-web-session` | Create web session |
+| `GET /api/local-logs` | Fetch local Docker logs |
+| `GET /api/cloudwatch-logs` | Fetch CloudWatch logs |
 
 ### `POST /api/make-call`
 Creates a LiveKit room and dispatches the agent for an outbound SIP call.
@@ -169,100 +122,105 @@ Creates a LiveKit room and dispatches the agent for an outbound SIP call.
 ```json
 {
   "phoneNumber": "+15551234567",
+  "callerNumber": "+15559876543",
   "stt": "assemblyai/universal-streaming:en",
-  "llm": "openai/gpt-4.1-mini",
+  "llm": "openai/gpt-4o-mini",
   "tts": "elevenlabs:pNInz6obpgDQGcFmaJgB",
   "agent_instructions": "..."
 }
 ```
 
+**Response** includes `value_sources` and `defaults_used` for transparency.
+
 ### `POST /api/start-web-session`
 Creates a room, dispatches the agent, and returns a LiveKit token for the browser.
 
-### `GET /api/local-logs` (dev only)
-Fetches local docker-compose logs.
-Enabled only when:
-- `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`
-- `ENABLE_LOCAL_LOGS=true`
+## Activity Logging
 
-### `GET /api/cloudwatch-logs`
-Fetches CloudWatch logs for the configured log group.
-Enabled only when:
-- `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true`
-- `ENABLE_CLOUDWATCH_LOGS=true`
-Optional query overrides:
-- `region`
-- `logGroup`
-- `streamPrefix`
-Debug:
-- `debug=1` returns the effective config + missing keys without fetching logs.
-It also includes `credentialHints` so you can see which AWS credential sources
-are visible at runtime (booleans only).
+Each page includes an embedded activity log that tracks:
+- Actions performed (calls initiated, sessions started, etc.)
+- Status (success, error, pending)
+- Details and API responses
+- Room names
+- Value sources and defaults used
 
-## Debugging toggles
-- `NEXT_PUBLIC_ENABLE_LOCAL_LOGS=true`
-- `ENABLE_LOCAL_LOGS=true`
-- `NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=true`
-- `ENABLE_CLOUDWATCH_LOGS=true`
+Activity is persisted in localStorage per page:
+- `dashboard-activity`
+- `web-session-activity`
+- `outbound-activity`
+- `live-activity`
+- `numbers-activity`
 
-Do **not** enable these in production.
+## Model Options
 
-## Frontend AWS State
+### STT (Speech-to-Text)
+| Provider | Models |
+|----------|--------|
+| AssemblyAI | `assemblyai/universal-streaming:en` |
+| Deepgram | `deepgram/nova-2`, `deepgram/nova-3:en`, `deepgram/enhanced` |
+| OpenAI | `openai/whisper-1` |
 
-Frontend AWS resources (Amplify app + CloudWatch config) are tracked in:
-`livekit/frontend-test-bench/aws-resources.json`.
-`deploy-amplify.sh` updates this file after each run.
+### LLM (Language Model)
+| Provider | Models |
+|----------|--------|
+| OpenAI | `openai/gpt-4o-mini` (recommended), `openai/gpt-4o`, `openai/gpt-4-turbo` |
 
-## CloudWatch Settings Panel
+### TTS (Text-to-Speech)
+| Provider | Voices |
+|----------|--------|
+| ElevenLabs | Adam, Rachel, Bella, Antoni, Elli, Josh, Arnold, Domi |
+| OpenAI | `openai/tts-1`, `openai/tts-1-hd` |
 
-When CloudWatch logs are enabled, the UI shows a settings panel for:
-- Region
-- Log group
-- Stream prefix
-- Optional bearer token
-- Check server config (shows missing keys + effective values)
-- Test fetch (no filter) with line count
-- Copy curl (builds the exact API request)
-- Copy config JSON (includes the current overrides; token included if set)
+## Amplify Deployment
 
-These values are stored in localStorage and are sent as query overrides to
-`/api/cloudwatch-logs`. Defaults are set to the LiveKit production values
-(`us-east-1`, `/livekit/voice`, `livekit`).
+### Console setup
+1. Amplify Console -> New app -> Host web app -> GitHub
+2. Select this repo + branch
+3. App root: `.`
+4. Build spec: `amplify.yml`
+5. Add env vars (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, NEXT_PUBLIC_CONTROL_API_URL)
+6. Deploy
+
+### Sync to deployment repo
+```bash
+./sync-frontend-test-bench.sh
+```
 
 ## Troubleshooting
 
 **"CloudWatch logging is not configured."**
-- The app is missing `CLOUDWATCH_REGION` or `CLOUDWATCH_LOG_GROUP` at runtime, or the
-  latest Amplify build hasn't picked up updated env vars yet. Set the env vars and
-  trigger a new build.
+- The app is missing `CLOUDWATCH_REGION` or `CLOUDWATCH_LOG_GROUP` at runtime. Set the env vars and trigger a new build.
 
 **"Could not load credentials from any providers"**
-- The Amplify app has no IAM service role (or the role lacks CloudWatch permissions).
-  Attach a service role that can call `logs:FilterLogEvents` on your log group and
-  trigger a new build.
-- If `debug=1` shows `credentialHints` all false, the SSR Lambda isn't seeing any
-  AWS credential source. Find the `Compute-<appId>-...` Lambda role and attach the
-  CloudWatch read policy to that role, then redeploy.
-- If you can't locate the compute role, use the optional `CLOUDWATCH_ACCESS_KEY_ID`
-  + `CLOUDWATCH_SECRET_ACCESS_KEY` env vars as a temporary fallback (server-only).
+- The Amplify app has no IAM service role (or the role lacks CloudWatch permissions). Attach a service role that can call `logs:FilterLogEvents` on your log group.
 
-## Repo structure
+**API calls failing**
+- Check that `NEXT_PUBLIC_CONTROL_API_URL` points to your running backend
+- Verify CORS is configured on the backend
+- Check browser console for detailed error messages
+
+## Project Structure
 ```
-.
-├── src/
-│   ├── app/
-│   │   ├── api/make-call/route.ts
-│   │   ├── api/start-web-session/route.ts
-│   │   ├── api/local-logs/route.ts
-│   │   └── api/cloudwatch-logs/route.ts
-│   └── components/CallTrigger.tsx
-├── amplify.yml
-├── deploy-amplify.sh
-├── .env.local.example
-└── .env.deploy.example
+src/
+├── app/
+│   ├── page.tsx              # Dashboard
+│   ├── numbers/page.tsx      # Registered numbers
+│   ├── web-session/page.tsx  # Web session testing
+│   ├── outbound/page.tsx     # Outbound calls
+│   ├── live/page.tsx         # Live call monitor
+│   ├── plugins/page.tsx      # Provider info
+│   ├── configs/page.tsx      # Agent configs
+│   ├── logs/page.tsx         # Log viewer
+│   └── api/                   # API routes
+├── components/
+│   ├── ActivityLog.tsx       # Reusable activity log
+│   └── CallTrigger.tsx       # Legacy call component
+└── lib/
+    └── models.ts             # Model options constants
 ```
 
 ## Security
-- Never commit `.env.local` or `.env.deploy` with real secrets.
-- `LIVEKIT_API_SECRET` is only used server-side in API routes.
-- Lock down CloudWatch logs using `CLOUDWATCH_LOGS_TOKEN`.
+
+- Never commit `.env.local` or `.env.deploy` with real secrets
+- `LIVEKIT_API_SECRET` is only used server-side in API routes
+- Lock down CloudWatch logs using `CLOUDWATCH_LOGS_TOKEN`
