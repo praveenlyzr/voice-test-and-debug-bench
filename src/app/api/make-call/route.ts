@@ -34,12 +34,17 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        phone_number: phoneNumber,
+        recipient_number: phoneNumber,
         caller_number: callerNumber,
-        stt,
-        llm,
-        tts,
-        agent_instructions,
+        // Don't set temporary_call: true - we want to use SIP config from DB for the trunk
+        voice_config: {
+          stt: stt || undefined,
+          llm: llm || undefined,
+          tts: tts || undefined,
+        },
+        agent_config: agent_instructions ? {
+          instructions: agent_instructions,
+        } : undefined,
       }),
     });
 

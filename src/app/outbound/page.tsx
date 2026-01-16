@@ -25,7 +25,8 @@ type AgentConfig = {
 
 type SipConfig = {
   phone_number: string;
-  outbound_trunk_id?: string;
+  outbound_trunk?: string;
+  inbound_trunk?: string;
 };
 
 type ConfigMode = 'saved' | 'custom';
@@ -103,15 +104,16 @@ export default function OutboundPage() {
 
         if (agentRes.ok) {
           const data = await agentRes.json();
-          setSavedConfigs(data.configs || []);
+          setSavedConfigs(data.items || data.configs || []);
         }
 
         if (sipRes.ok) {
           const data = await sipRes.json();
-          setSipConfigs(data.configs || []);
+          const configs = data.items || data.configs || [];
+          setSipConfigs(configs);
           // Set default caller number if available
-          if (data.configs && data.configs.length > 0) {
-            setCallerNumber(data.configs[0].phone_number);
+          if (configs.length > 0) {
+            setCallerNumber(configs[0].phone_number);
           }
         }
       } catch {
@@ -294,7 +296,7 @@ export default function OutboundPage() {
                   {sipConfigs.map((config) => (
                     <option key={config.phone_number} value={config.phone_number}>
                       {config.phone_number}
-                      {config.outbound_trunk_id ? ' (Outbound OK)' : ''}
+                      {config.outbound_trunk ? ' ✓' : ''}
                     </option>
                   ))}
                 </select>

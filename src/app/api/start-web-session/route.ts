@@ -46,10 +46,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Return the backend response (includes token, room_name, livekit_url, etc.)
+    // Use env LIVEKIT_URL as the backend returns internal Docker URL
+    const livekitUrl = process.env.LIVEKIT_URL || data.livekit_url;
     return NextResponse.json({
       token: data.token,
       roomName: data.room_name,
-      livekitUrl: data.livekit_url,
+      livekitUrl,
       metadata: data.metadata,
       value_sources: data.value_sources,
       defaults_used: data.defaults_used,
