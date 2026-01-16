@@ -12,9 +12,17 @@ export async function POST(request: NextRequest) {
     const agentName = process.env.LIVEKIT_AGENT_NAME || 'telephony-agent';
 
     if (!livekitUrl || !livekitApiKey || !livekitApiSecret) {
-      console.error('Missing LiveKit configuration');
+      const missing = [];
+      if (!livekitUrl) missing.push('LIVEKIT_URL');
+      if (!livekitApiKey) missing.push('LIVEKIT_API_KEY');
+      if (!livekitApiSecret) missing.push('LIVEKIT_API_SECRET');
+      console.error('Missing LiveKit configuration:', missing.join(', '));
       return NextResponse.json(
-        { error: 'Server configuration error' },
+        {
+          error: 'Server configuration error: Missing LiveKit credentials',
+          missing,
+          hint: 'Set these environment variables in Amplify or .env.local'
+        },
         { status: 500 }
       );
     }
