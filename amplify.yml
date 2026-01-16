@@ -10,6 +10,25 @@ applications:
             - npm ci
         build:
           commands:
+            # Create .env.production with all env vars for Next.js SSR
+            - |
+              cat > .env.production << EOF
+              LIVEKIT_URL=${LIVEKIT_URL}
+              LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+              LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+              LIVEKIT_AGENT_NAME=${LIVEKIT_AGENT_NAME:-telephony-agent}
+              NEXT_PUBLIC_CONTROL_API_URL=${NEXT_PUBLIC_CONTROL_API_URL}
+              ENABLE_CLOUDWATCH_LOGS=${ENABLE_CLOUDWATCH_LOGS}
+              NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=${NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS}
+              CLOUDWATCH_REGION=${CLOUDWATCH_REGION}
+              CLOUDWATCH_LOG_GROUP=${CLOUDWATCH_LOG_GROUP}
+              CLOUDWATCH_STREAM_PREFIX=${CLOUDWATCH_STREAM_PREFIX}
+              GOOGLE_API_KEY=${GOOGLE_API_KEY}
+              OPENAI_API_KEY=${OPENAI_API_KEY}
+              ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+              DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+              ELEVEN_API_KEY=${ELEVEN_API_KEY}
+              EOF
             - npm run build
       artifacts:
         baseDirectory: .next
