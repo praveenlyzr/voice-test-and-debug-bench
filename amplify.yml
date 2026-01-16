@@ -11,24 +11,22 @@ applications:
         build:
           commands:
             # Create .env.production with all env vars for Next.js SSR
-            - |
-              cat > .env.production << EOF
-              LIVEKIT_URL=${LIVEKIT_URL}
-              LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
-              LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
-              LIVEKIT_AGENT_NAME=${LIVEKIT_AGENT_NAME:-telephony-agent}
-              NEXT_PUBLIC_CONTROL_API_URL=${NEXT_PUBLIC_CONTROL_API_URL}
-              ENABLE_CLOUDWATCH_LOGS=${ENABLE_CLOUDWATCH_LOGS}
-              NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=${NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS}
-              CLOUDWATCH_REGION=${CLOUDWATCH_REGION}
-              CLOUDWATCH_LOG_GROUP=${CLOUDWATCH_LOG_GROUP}
-              CLOUDWATCH_STREAM_PREFIX=${CLOUDWATCH_STREAM_PREFIX}
-              GOOGLE_API_KEY=${GOOGLE_API_KEY}
-              OPENAI_API_KEY=${OPENAI_API_KEY}
-              ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
-              DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
-              ELEVEN_API_KEY=${ELEVEN_API_KEY}
-              EOF
+            - echo "LIVEKIT_URL=${LIVEKIT_URL}" > .env.production
+            - echo "LIVEKIT_API_KEY=${LIVEKIT_API_KEY}" >> .env.production
+            - echo "LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}" >> .env.production
+            - echo "LIVEKIT_AGENT_NAME=${LIVEKIT_AGENT_NAME:-telephony-agent}" >> .env.production
+            - echo "NEXT_PUBLIC_CONTROL_API_URL=${NEXT_PUBLIC_CONTROL_API_URL}" >> .env.production
+            - echo "ENABLE_CLOUDWATCH_LOGS=${ENABLE_CLOUDWATCH_LOGS}" >> .env.production
+            - echo "NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS=${NEXT_PUBLIC_ENABLE_CLOUDWATCH_LOGS}" >> .env.production
+            - echo "CLOUDWATCH_REGION=${CLOUDWATCH_REGION}" >> .env.production
+            - echo "CLOUDWATCH_LOG_GROUP=${CLOUDWATCH_LOG_GROUP}" >> .env.production
+            - echo "CLOUDWATCH_STREAM_PREFIX=${CLOUDWATCH_STREAM_PREFIX}" >> .env.production
+            - echo "GOOGLE_API_KEY=${GOOGLE_API_KEY}" >> .env.production
+            - echo "OPENAI_API_KEY=${OPENAI_API_KEY}" >> .env.production
+            - echo "ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}" >> .env.production
+            - echo "DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}" >> .env.production
+            - echo "ELEVEN_API_KEY=${ELEVEN_API_KEY}" >> .env.production
+            - cat .env.production
             - npm run build
       artifacts:
         baseDirectory: .next
