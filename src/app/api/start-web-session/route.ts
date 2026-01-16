@@ -1,97 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+
+const CONTROL_API_URL = process.env.NEXT_PUBLIC_CONTROL_API_URL || '';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const { stt, llm, tts, agent_instructions } = body || {};
 
-    const livekitUrl = process.env.LIVEKIT_URL;
-    const livekitApiKey = process.env.LIVEKIT_API_KEY;
-    const livekitApiSecret = process.env.LIVEKIT_API_SECRET;
-    const agentName = process.env.LIVEKIT_AGENT_NAME || 'telephony-agent';
-
-    if (!livekitUrl || !livekitApiKey || !livekitApiSecret) {
-      const missing = [];
-      if (!livekitUrl) missing.push('LIVEKIT_URL');
-      if (!livekitApiKey) missing.push('LIVEKIT_API_KEY');
-      if (!livekitApiSecret) missing.push('LIVEKIT_API_SECRET');
-      console.error('Missing LiveKit configuration:', missing.join(', '));
+    // Check if backend URL is configured
+    if (!CONTROL_API_URL || CONTROL_API_URL === 'true') {
       return NextResponse.json(
         {
-          error: 'Server configuration error: Missing LiveKit credentials',
-          missing,
-          hint: 'Set these environment variables in Amplify or .env.local'
+          error: 'Backend API URL not configured',
+          hint: 'Set NEXT_PUBLIC_CONTROL_API_URL to your backend URL',
         },
         { status: 500 }
       );
     }
 
-    const livekitHost = livekitUrl.replace(/^ws(s)?:\/\//, 'http$1://');
-    const roomService = new RoomServiceClient(
-      livekitHost,
-      livekitApiKey,
-      livekitApiSecret
-    );
-
-    const timestamp = Date.now();
-    const roomName = `web-${timestamp}`;
-    const identity = `web-${Math.random().toString(36).slice(2, 10)}`;
-
-    const jobMetadata = {
-      stt: stt || 'assemblyai/universal-streaming:en',
-      llm: llm || 'openai/gpt-4.1-mini',
-      tts: tts || 'elevenlabs:pNInz6obpgDQGcFmaJgB',
-      agent_instructions:
-        agent_instructions ||
-        'You are a helpful voice AI assistant for phone calls. Be concise, friendly, and professional.',
-      timestamp,
-      type: 'web_session',
-    };
-
-    await roomService.createRoom({
-      name: roomName,
-      emptyTimeout: 300,
-      maxParticipants: 2,
-      metadata: JSON.stringify(jobMetadata),
+    // Call the backend API to create a web session
+    const url = `${CONTROL_API_URL}/sessions/web`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        stt,
+        llm,
+        tts,
+        agent_instructions,
+      }),
     });
 
-    const sdk: any = await import('livekit-server-sdk');
-    const AgentDispatchClient = sdk.AgentDispatchClient;
-    if (!AgentDispatchClient) {
-      throw new Error('AgentDispatchClient not available in livekit-server-sdk');
+    const data = await response.json();
+
+    if (!response.ok) {
+      return NextResponse.json(
+        {
+          error: data.detail || data.error || 'Failed to start web session',
+          backendUrl: url,
+        },
+        { status: response.status }
+      );
     }
 
-    const agentDispatch = new AgentDispatchClient(
-      livekitHost,
-      livekitApiKey,
-      livekitApiSecret
-    );
-
-    await agentDispatch.createDispatch(roomName, agentName, {
-      metadata: JSON.stringify(jobMetadata),
+    // Return the backend response (includes token, room_name, livekit_url, etc.)
+    return NextResponse.json({
+      token: data.token,
+      roomName: data.room_name,
+      livekitUrl: data.livekit_url,
+      metadata: data.metadata,
+      value_sources: data.value_sources,
+      defaults_used: data.defaults_used,
     });
-
-    const tokenBuilder = new AccessToken(livekitApiKey, livekitApiSecret, {
-      identity,
-      name: 'Web Caller',
-    });
-    tokenBuilder.addGrant({ roomJoin: true, room: roomName });
-    const token = await tokenBuilder.toJwt();
-
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       {
-        token,
-        roomName,
-        livekitUrl,
+        error: `Failed to start web session: ${message}`,
+        hint: 'Check if backend is running at ' + CONTROL_API_URL,
       },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Error starting web session:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: `Failed to start web session: ${message}` },
       { status: 500 }
     );
   }
@@ -101,5 +70,6 @@ export async function GET() {
   return NextResponse.json({
     status: 'ok',
     service: 'livekit-web-session',
+    backendUrl: CONTROL_API_URL || '(not configured)',
   });
 }
