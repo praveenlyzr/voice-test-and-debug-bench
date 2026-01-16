@@ -48,6 +48,15 @@ export const LLM_OPTIONS: ModelCategory[] = [
       { value: 'openai/gpt-3.5-turbo', label: 'GPT-3.5 Turbo', description: 'Fastest, lowest cost' },
     ],
   },
+  {
+    category: 'Google Gemini',
+    options: [
+      { value: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash (Recommended)', description: 'Fast, multimodal' },
+      { value: 'google/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite', description: 'Faster, cost-effective' },
+      { value: 'google/gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'High quality, long context' },
+      { value: 'google/gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Fast, balanced' },
+    ],
+  },
 ];
 
 // Text-to-Speech Models with Voice IDs
@@ -127,6 +136,12 @@ export const LLM_PROVIDERS: ProviderInfo[] = [
     envKey: 'OPENAI_API_KEY',
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
     description: 'GPT models for conversational AI',
+  },
+  {
+    name: 'Google Gemini',
+    envKey: 'GOOGLE_API_KEY',
+    models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    description: 'Gemini models for fast, multimodal AI',
   },
 ];
 

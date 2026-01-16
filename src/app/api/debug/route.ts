@@ -31,6 +31,15 @@ export async function GET() {
       NEXT_PUBLIC_CONTROL_API_URL: checkEnv('NEXT_PUBLIC_CONTROL_API_URL'),
     },
 
+    // Additional Provider Keys
+    providers: {
+      GOOGLE_API_KEY: checkEnv('GOOGLE_API_KEY'),
+      ASSEMBLYAI_API_KEY: checkEnv('ASSEMBLYAI_API_KEY'),
+      DEEPGRAM_API_KEY: checkEnv('DEEPGRAM_API_KEY'),
+      ELEVEN_API_KEY: checkEnv('ELEVEN_API_KEY'),
+      OPENAI_API_KEY: checkEnv('OPENAI_API_KEY'),
+    },
+
     // CloudWatch Logs
     cloudwatch: {
       ENABLE_CLOUDWATCH_LOGS: checkEnv('ENABLE_CLOUDWATCH_LOGS'),
@@ -62,7 +71,7 @@ export async function GET() {
     },
 
     // Hints for debugging
-    hints: [],
+    hints: [] as string[],
   };
 
   // Add helpful hints
