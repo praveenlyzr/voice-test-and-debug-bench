@@ -46,8 +46,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Return the backend response (includes token, room_name, livekit_url, etc.)
-    // Use env LIVEKIT_URL as the backend returns internal Docker URL
-    const livekitUrl = process.env.LIVEKIT_URL || data.livekit_url;
+    // Backend now returns correct PUBLIC_LIVEKIT_URL, use it directly
+    const livekitUrl = data.livekit_url;
+    console.log('Web session created:', { roomName: data.room_name, livekitUrl });
     return NextResponse.json({
       token: data.token,
       roomName: data.room_name,

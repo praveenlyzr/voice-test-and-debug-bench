@@ -298,6 +298,8 @@ export default function CallTrigger() {
         process.env.NEXT_PUBLIC_LIVEKIT_URL ||
         'ws://localhost:7880';
 
+      console.log('Web session data:', { livekitUrl, roomName: data.roomName, token: data.token?.substring(0, 50) + '...' });
+
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
@@ -305,27 +307,54 @@ export default function CallTrigger() {
       roomRef.current = room;
 
       room
-        .on(RoomEvent.TrackSubscribed, (track) => {
+        .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+          console.log('Track subscribed:', track.kind, 'from', participant.identity);
           if (track.kind === Track.Kind.Audio && audioRef.current) {
             track.attach(audioRef.current);
           }
         })
         .on(RoomEvent.TrackUnsubscribed, (track) => {
+          console.log('Track unsubscribed:', track.kind);
           if (track.kind === Track.Kind.Audio) {
             track.detach();
           }
         })
+        .on(RoomEvent.TrackPublished, (publication, participant) => {
+          console.log('Track published:', publication.kind, 'by', participant.identity);
+        })
+        .on(RoomEvent.LocalTrackPublished, (publication) => {
+          console.log('Local track published:', publication.kind, publication.trackSid);
+        })
         .on(RoomEvent.Disconnected, () => {
+          console.log('Room disconnected');
           setWebConnected(false);
           setWebStatus('Disconnected');
+        })
+        .on(RoomEvent.ParticipantConnected, (participant) => {
+          console.log('Participant connected:', participant.identity);
         });
 
       await room.connect(livekitUrl, data.token);
-      await room.localParticipant.setMicrophoneEnabled(true);
+
+      // Enable microphone with error handling
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        // Verify microphone track was published
+        const audioTracks = room.localParticipant.audioTrackPublications;
+        if (audioTracks.size === 0) {
+          console.warn('Microphone enabled but no audio tracks published');
+          setWebStatus('⚠ Connected but microphone may not be working. Check browser permissions.');
+        } else {
+          console.log('Microphone enabled, tracks:', audioTracks.size);
+          setWebStatus('✓ Connected. Speak and the agent should answer.');
+        }
+      } catch (micError) {
+        console.error('Failed to enable microphone:', micError);
+        setWebStatus(`⚠ Connected but microphone failed: ${micError instanceof Error ? micError.message : 'Unknown error'}. Check browser permissions.`);
+      }
 
       setWebConnected(true);
       setWebRoomName(data.roomName || '');
-      setWebStatus('✓ Connected. Speak and the agent should answer.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setWebStatus(`✗ Error: ${message}`);
