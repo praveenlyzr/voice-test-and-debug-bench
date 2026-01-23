@@ -272,10 +272,25 @@ export default function CallTrigger() {
   const startWebSession = async () => {
     if (webConnected || webConnecting) return;
     setWebConnecting(true);
-    setWebStatus('Starting web session...');
+    setWebStatus('Requesting microphone access...');
     setWebRoomName('');
 
     try {
+      // Step 1: Request microphone permission FIRST (before anything else)
+      let micStream: MediaStream | null = null;
+      try {
+        console.log('Requesting microphone permission...');
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Microphone permission granted, tracks:', micStream.getAudioTracks().length);
+        setWebStatus('Microphone access granted. Starting session...');
+      } catch (permError) {
+        console.error('Microphone permission denied:', permError);
+        setWebStatus(`✗ Microphone access denied: ${permError instanceof Error ? permError.message : 'Permission denied'}. Please allow microphone access and try again.`);
+        setWebConnecting(false);
+        return;
+      }
+
+      // Step 2: Call the API to create the session
       const response = await fetch('/api/start-web-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -289,6 +304,8 @@ export default function CallTrigger() {
 
       const data = await response.json();
       if (!response.ok) {
+        // Clean up mic stream if API fails
+        micStream?.getTracks().forEach(t => t.stop());
         setWebStatus(`✗ Error: ${data.error || 'Failed to start web session'}`);
         return;
       }
@@ -300,11 +317,15 @@ export default function CallTrigger() {
 
       console.log('Web session data:', { livekitUrl, roomName: data.roomName, token: data.token?.substring(0, 50) + '...' });
 
+      // Step 3: Create room and set up event handlers
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
       });
       roomRef.current = room;
+
+      // Track whether local audio was successfully published
+      let localAudioPublished = false;
 
       room
         .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -324,6 +345,10 @@ export default function CallTrigger() {
         })
         .on(RoomEvent.LocalTrackPublished, (publication) => {
           console.log('Local track published:', publication.kind, publication.trackSid);
+          if (publication.kind === Track.Kind.Audio) {
+            localAudioPublished = true;
+            setWebStatus('✓ Connected with microphone. Speak and the agent should answer.');
+          }
         })
         .on(RoomEvent.Disconnected, () => {
           console.log('Room disconnected');
@@ -332,31 +357,64 @@ export default function CallTrigger() {
         })
         .on(RoomEvent.ParticipantConnected, (participant) => {
           console.log('Participant connected:', participant.identity);
+        })
+        .on(RoomEvent.ConnectionStateChanged, (state) => {
+          console.log('Connection state changed:', state);
+        })
+        .on(RoomEvent.MediaDevicesError, (error) => {
+          console.error('Media devices error:', error);
+          setWebStatus(`⚠ Media error: ${error.message}`);
         });
 
-      await room.connect(livekitUrl, data.token);
+      setWebStatus('Connecting to room...');
 
-      // Enable microphone with error handling
-      try {
-        await room.localParticipant.setMicrophoneEnabled(true);
-        // Verify microphone track was published
-        const audioTracks = room.localParticipant.audioTrackPublications;
-        if (audioTracks.size === 0) {
-          console.warn('Microphone enabled but no audio tracks published');
-          setWebStatus('⚠ Connected but microphone may not be working. Check browser permissions.');
-        } else {
-          console.log('Microphone enabled, tracks:', audioTracks.size);
-          setWebStatus('✓ Connected. Speak and the agent should answer.');
+      // Step 4: Connect to the room
+      await room.connect(livekitUrl, data.token);
+      console.log('Connected to room, state:', room.state);
+
+      // Stop the pre-acquired mic stream (LiveKit will create its own)
+      micStream?.getTracks().forEach(t => t.stop());
+
+      // Step 5: Enable microphone with retries
+      setWebStatus('Publishing microphone...');
+      let micEnabled = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`Enabling microphone (attempt ${attempt}/3)...`);
+          await room.localParticipant.setMicrophoneEnabled(true);
+
+          // Wait a moment for the track to be published
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          const audioTracks = room.localParticipant.audioTrackPublications;
+          console.log('Audio track publications after enable:', audioTracks.size);
+
+          if (audioTracks.size > 0) {
+            micEnabled = true;
+            console.log('Microphone successfully enabled and published');
+            break;
+          } else {
+            console.warn(`Attempt ${attempt}: setMicrophoneEnabled returned but no tracks published`);
+          }
+        } catch (micError) {
+          console.error(`Attempt ${attempt} failed:`, micError);
+          if (attempt === 3) {
+            setWebStatus(`⚠ Connected but microphone failed after 3 attempts: ${micError instanceof Error ? micError.message : 'Unknown error'}`);
+          }
         }
-      } catch (micError) {
-        console.error('Failed to enable microphone:', micError);
-        setWebStatus(`⚠ Connected but microphone failed: ${micError instanceof Error ? micError.message : 'Unknown error'}. Check browser permissions.`);
+      }
+
+      if (micEnabled || localAudioPublished) {
+        setWebStatus('✓ Connected with microphone. Speak and the agent should answer.');
+      } else {
+        setWebStatus('⚠ Connected but microphone may not be working. Check browser permissions and try again.');
       }
 
       setWebConnected(true);
       setWebRoomName(data.roomName || '');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      console.error('startWebSession error:', error);
       setWebStatus(`✗ Error: ${message}`);
       roomRef.current?.disconnect();
       roomRef.current = null;
